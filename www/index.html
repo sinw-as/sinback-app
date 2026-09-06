@@ -962,10 +962,10 @@
     </div>
     <div class="tab-panel active" id="tab-export">
       <div class="backup-note">
-        این متن شامل تمام بک‌تست‌های ثبت‌شده‌ست. کپی کن و یه جای امن (نوت، تلگرام خودت و...) نگه‌دار تا در صورت نیاز بتونی بازیابی کنی.
-        <br><b style="color:var(--neutral);">توجه:</b> اسکرین‌شات‌های معاملات توی این پشتیبان‌گیری متنی گنجانده نمی‌شن (حجمشون زیاده)؛ فقط خود اطلاعات بک‌تست منتقل می‌شه.
+        این شامل تمام بک‌تست‌ها به‌همراه اسکرین‌شات‌هاشونه. برای اسکرین‌شات زیاد، فایل حجیم می‌شه — برای اون حالت، دکمه‌ی «ذخیره/اشتراک فایل بک‌آپ» رو ترجیح بده (کپی به کلیپ‌بورد برای بک‌آپ‌های حجیم مناسب نیست).
       </div>
       <textarea class="backup-textarea" id="exportArea" readonly></textarea>
+      <div class="mini-note" id="exportSizeNote" style="font-size:11px; color:var(--text-faint); margin-top:6px;"></div>
       <div class="form-footer" style="padding:16px 0 0; border-top:none; gap:10px;">
         <button class="btn btn-secondary" id="downloadBackupBtn">⬇ ذخیره/اشتراک فایل بک‌آپ</button>
         <button class="btn btn-primary" id="copyExportBtn">کپی به کلیپ‌بورد</button>
@@ -2379,9 +2379,37 @@ $('rangeClearBtn').addEventListener('click', () => {
 });
 
 /* ---------- BACKUP ---------- */
-$('backupBtn').addEventListener('click', () => {
-  $('exportArea').value = JSON.stringify(records, null, 2);
+
+// Bundles every trade PLUS every screenshot it references into one
+// object. Screenshots are already stored as base64 data-URLs in
+// IndexedDB (see persistFormImages), so they drop straight into JSON
+// as plain strings — no extra encoding step needed here.
+async function buildBackupPayload(){
+  const allImageIds = [];
+  records.forEach(r => { if(Array.isArray(r.imageIds)) allImageIds.push(...r.imageIds); });
+  const uniqueIds = [...new Set(allImageIds)];
+  const imgs = await idbGetImagesByIds(uniqueIds);
+  const images = {};
+  imgs.forEach(img => { images[img.id] = img.dataUrl; });
+  return {
+    __sinbackBackup: true,
+    version: 2,
+    exportedAt: Date.now(),
+    records,
+    images
+  };
+}
+
+$('backupBtn').addEventListener('click', async () => {
   $('backupOverlay').classList.add('open');
+  $('exportArea').value = 'در حال آماده‌سازی...';
+  $('exportSizeNote').textContent = '';
+  const payload = await buildBackupPayload();
+  const json = JSON.stringify(payload, null, 2);
+  $('exportArea').value = json;
+  const kb = Math.round(new Blob([json]).size / 1024);
+  const shotCount = Object.keys(payload.images).length;
+  $('exportSizeNote').textContent = `حجم تقریبی: ${kb} کیلوبایت · ${shotCount} اسکرین‌شات`;
 });
 $('closeBackup').addEventListener('click', () => $('backupOverlay').classList.remove('open'));
 
@@ -2411,13 +2439,14 @@ $('copyExportBtn').addEventListener('click', async () => {
   }
 });
 
-// Turns the current records into an actual .json file and hands it to
-// the native share sheet (save to Google Drive, Telegram, Files, etc.)
-// — same pattern as the PDF export. This is what makes a backup
-// survive an uninstall: the copy-to-clipboard version above never
-// leaves the app, but a file shared out to Drive/Telegram does.
+// Turns the current records + screenshots into an actual .json file and
+// hands it to the native share sheet (save to Google Drive, Telegram,
+// Files, etc.) — same pattern as the PDF export. This is what makes a
+// backup survive an uninstall: the copy-to-clipboard version above
+// never leaves the app, but a file shared out to Drive/Telegram does.
 async function exportBackupToFile(){
-  const json = JSON.stringify(records, null, 2);
+  const payload = await buildBackupPayload();
+  const json = JSON.stringify(payload, null, 2);
   const fileName = `sinback-backup-${Date.now()}.json`;
   const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
   const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
@@ -2432,7 +2461,7 @@ async function exportBackupToFile(){
       const uriResult = await plugins.Filesystem.getUri({ directory: 'CACHE', path: fileName });
       await plugins.Share.share({
         title: 'بک‌آپ سین‌بک',
-        text: 'فایل پشتیبان بک‌تست‌های سین‌بک',
+        text: 'فایل پشتیبان بک‌تست‌های سین‌بک (همراه با اسکرین‌شات‌ها)',
         url: uriResult.uri,
         dialogTitle: 'ذخیره یا اشتراک‌گذاری بک‌آپ'
       });
@@ -2456,31 +2485,68 @@ async function exportBackupToFile(){
 
 $('downloadBackupBtn').addEventListener('click', exportBackupToFile);
 
-function restoreFromJsonText(raw){
+async function restoreFromJsonText(raw){
   if(!raw || !raw.trim()){ toast('چیزی برای بازیابی وارد نشده'); return; }
   let parsed;
   try{
     parsed = JSON.parse(raw);
-    if(!Array.isArray(parsed)) throw new Error('not array');
   }catch(e){
     toast('این فایل/متن یه بک‌آپ معتبر سین‌بک نیست');
     return;
   }
+
+  // New backup format (v2, from buildBackupPayload) is an object with
+  // .records + .images. The old format (from before screenshots were
+  // included) was just a plain array of records — still supported here
+  // so older backup files people already saved keep working.
+  let incomingRecords, incomingImages;
+  if(Array.isArray(parsed)){
+    incomingRecords = parsed;
+    incomingImages = {};
+  } else if(parsed && Array.isArray(parsed.records)){
+    incomingRecords = parsed.records;
+    incomingImages = parsed.images || {};
+  } else {
+    toast('این فایل/متن یه بک‌آپ معتبر سین‌بک نیست');
+    return;
+  }
+
   const existingIds = new Set(records.map(r => r.id));
-  let added = 0;
-  parsed.forEach(r => {
+  const addedRecords = [];
+  incomingRecords.forEach(r => {
     if(r && r.id && !existingIds.has(r.id)){
       records.push(r);
       existingIds.add(r.id);
-      added++;
+      addedRecords.push(r);
     }
   });
-  saveData().then(() => {
-    render();
-    $('importArea').value = '';
-    toast(added > 0 ? `${added} بک‌تست بازیابی شد ✓` : 'چیز جدیدی برای اضافه کردن نبود');
-    $('backupOverlay').classList.remove('open');
-  });
+
+  // Only write screenshots that belong to a record we actually just
+  // added — restoring the same backup twice shouldn't re-import images
+  // for trades that are already here.
+  let restoredShots = 0;
+  if(useIndexedDB){
+    for(const r of addedRecords){
+      if(!Array.isArray(r.imageIds)) continue;
+      for(const imgId of r.imageIds){
+        const dataUrl = incomingImages[imgId];
+        if(!dataUrl) continue;
+        try{
+          await idbPutImage({ id: imgId, tradeId: r.id, type: 'main', dataUrl, createdAt: Date.now() });
+          restoredShots++;
+        }catch(e){ /* non-fatal — trade data itself still restores fine */ }
+      }
+    }
+  }
+
+  await saveData();
+  render();
+  $('importArea').value = '';
+  const msg = addedRecords.length
+    ? `${addedRecords.length} بک‌تست${restoredShots ? ` و ${restoredShots} اسکرین‌شات` : ''} بازیابی شد ✓`
+    : 'چیز جدیدی برای اضافه کردن نبود';
+  toast(msg);
+  $('backupOverlay').classList.remove('open');
 }
 
 $('restoreBtn').addEventListener('click', () => {
