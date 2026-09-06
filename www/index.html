@@ -11,6 +11,18 @@
      at the end of this stage's summary for the one-time setup step
      this needs (downloading chart.min.js into the same folder). -->
 <script src="chart.min.js"></script>
+<!-- PDF export stack — all loaded from LOCAL files so PDF export keeps
+     working with zero internet connection, same as Chart.js above.
+     capacitor.js + the two plugin bundles let us call the native
+     Filesystem/Share APIs from plain JS (no bundler in this project),
+     and jsPDF/html2canvas turn the on-screen report into an actual
+     PDF file instead of relying on window.print(), which the Android
+     WebView does not support. -->
+<script src="capacitor.js"></script>
+<script src="capacitor-filesystem.js"></script>
+<script src="capacitor-share.js"></script>
+<script src="jspdf.umd.min.js"></script>
+<script src="html2canvas.min.js"></script>
 <style>
   :root{
     --bg:#0A0E12;
@@ -540,6 +552,25 @@
     .report-table{min-width:0 !important; table-layout:fixed !important;}
     @page{ size:A4 landscape; margin:10mm; }
   }
+
+  /* Same visual treatment as the @media print block above, but as a
+     regular class instead of a print media query — html2canvas takes
+     a screenshot of live DOM/CSS and doesn't know about @media print,
+     so this class is toggled on <body> right before capture (see
+     generatePdfReport()) to get the same clean white PDF layout. */
+  body.pdf-export-mode .no-print{display:none !important;}
+  body.pdf-export-mode{background:#fff !important;}
+  body.pdf-export-mode #tradingAppRoot{max-width:100% !important; width:100% !important;}
+  body.pdf-export-mode #app{max-width:100% !important; width:100% !important; margin:0 !important; padding-bottom:0 !important; min-height:0 !important;}
+  body.pdf-export-mode #tableView{display:block !important; background:#fff !important; padding:0 !important; max-width:100% !important; margin:0 !important;}
+  body.pdf-export-mode #tableView, body.pdf-export-mode #tableView *{color:#111 !important;}
+  body.pdf-export-mode .table-view-wrap{padding:0 !important;}
+  body.pdf-export-mode .report-table, body.pdf-export-mode .report-table th, body.pdf-export-mode .report-table td{border:1px solid #888 !important; background:#fff !important;}
+  body.pdf-export-mode .report-table th{background:#eee !important;}
+  body.pdf-export-mode .report-table th, body.pdf-export-mode .report-table td{white-space:normal !important; font-size:8.5px !important; padding:4px 5px !important;}
+  body.pdf-export-mode .date-group-title{color:#111 !important; border-bottom:2px solid #111 !important;}
+  body.pdf-export-mode .report-table-scroll{border:none !important; overflow:visible !important;}
+  body.pdf-export-mode .report-table{min-width:0 !important; table-layout:fixed !important;}
 </style>
 </head>
 <body>
@@ -2128,8 +2159,87 @@ function renderReport(){
 }
 
 $('downloadPdfBtn').addEventListener('click', () => {
-  window.print();
+  generatePdfReport();
 });
+
+async function generatePdfReport(){
+  const btn = $('downloadPdfBtn');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'در حال ساخت PDF...';
+  btn.disabled = true;
+
+  try{
+    // Switch the report to the clean white "print" look, screenshot it,
+    // then switch back — this all happens in well under a second.
+    document.body.classList.add('pdf-export-mode');
+    const target = document.querySelector('#tableView .table-view-wrap');
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true
+    });
+    document.body.classList.remove('pdf-export-mode');
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    // Long reports get split across multiple A4 pages.
+    let heightLeft = imgHeight;
+    let position = 0;
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    while(heightLeft > 0){
+      position -= pageHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    const fileName = `sinback-report-${Date.now()}.pdf`;
+    const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+
+    if(isNative && plugins.Filesystem && plugins.Share){
+      // Inside the Android app: write the PDF to the app's cache folder,
+      // then hand it to the native share sheet so the user can save it
+      // to Downloads, send it on Telegram, etc.
+      const base64 = pdf.output('datauristring').split(',')[1];
+      await plugins.Filesystem.writeFile({
+        path: fileName,
+        data: base64,
+        directory: 'CACHE'
+      });
+      const uriResult = await plugins.Filesystem.getUri({ directory: 'CACHE', path: fileName });
+      await plugins.Share.share({
+        title: 'گزارش بک‌تست',
+        text: 'گزارش کامل بک‌تست‌های سین‌بک',
+        url: uriResult.uri,
+        dialogTitle: 'ذخیره یا اشتراک‌گذاری PDF'
+      });
+    } else {
+      // Running in a plain browser (e.g. while testing the web version):
+      // fall back to a normal file download.
+      const link = document.createElement('a');
+      link.href = pdf.output('datauristring');
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  }catch(err){
+    document.body.classList.remove('pdf-export-mode');
+    console.error('PDF export failed:', err);
+    showResultToast('ساخت PDF با خطا مواجه شد', 'error', '⚠️');
+  }finally{
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+  }
+}
 
 $('rangeFrom').addEventListener('input', renderReport);
 $('rangeTo').addEventListener('input', renderReport);
