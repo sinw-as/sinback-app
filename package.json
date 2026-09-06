@@ -1,0 +1,16 @@
+{
+  "name": "sinback-android",
+  "version": "1.0.0",
+  "description": "SinBack — Android wrapper (Capacitor)",
+  "scripts": {
+    "sync": "npx cap sync android",
+    "open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "latest",
+    "@capacitor/android": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest"
+  }
+}
