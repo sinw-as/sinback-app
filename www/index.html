@@ -186,8 +186,14 @@
   }
   .ticket:active{border-color:#333e4a;}
   .ticket-top{
-    display:flex; align-items:center; justify-content:space-between; padding:14px 16px 8px;
+    display:flex; align-items:center; justify-content:space-between; padding:14px 16px 8px; gap:8px;
   }
+  .ticket-actions{display:flex; align-items:center; gap:6px;}
+  .dup-btn{
+    width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    background:var(--surface-2); color:var(--text-faint); font-size:14px; flex-shrink:0;
+  }
+  .dup-btn:active{background:var(--border); color:var(--text);}
   .ticket-num{
     font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:700; color:var(--text);
   }
@@ -607,12 +613,16 @@
     <div id="err-landing" class="auth-error" style="display:none;"></div>
     <button type="button" class="btn btn-primary auth-btn" id="goRegister">ثبت نام</button>
     <button type="button" class="btn btn-secondary auth-btn" id="goLogin">ورود</button>
+    <button type="button" class="btn btn-secondary auth-btn" id="goRestoreFromLanding" style="margin-top:6px;">بازیابی از فایل پشتیبان (بعد از نصب مجدد)</button>
   </div>
 </div>
 
 <div id="screen-register-form" class="auth-screen">
   <div class="auth-card">
     <h2 class="auth-title">ثبت نام</h2>
+    <p class="auth-note" id="registerRestoreNote" style="display:none;">
+      اول یه حساب جدید بساز (می‌تونی همون نام کاربری قبلی یا هر اسم دیگه‌ای بذاری)، بعد فایل بک‌آپت رو انتخاب می‌کنی تا اطلاعات قبلی برگرده.
+    </p>
     <div id="err-reg" class="auth-error" style="display:none;"></div>
     <div class="field">
       <label>نام کاربری</label>
@@ -703,6 +713,7 @@
       <div class="filter-chip" data-f="سر به سر">سر به سر</div>
     </div>
     <div class="filter-chips" id="tfFilterChips" style="display:none;"></div>
+    <div class="filter-chips" id="dirFilterChips" style="display:none;"></div>
     <div class="sort-row">
       <label>مرتب‌سازی</label>
       <select class="sort-select" id="sortSelect">
@@ -955,15 +966,20 @@
         <br><b style="color:var(--neutral);">توجه:</b> اسکرین‌شات‌های معاملات توی این پشتیبان‌گیری متنی گنجانده نمی‌شن (حجمشون زیاده)؛ فقط خود اطلاعات بک‌تست منتقل می‌شه.
       </div>
       <textarea class="backup-textarea" id="exportArea" readonly></textarea>
-      <div class="form-footer" style="padding:16px 0 0; border-top:none;">
+      <div class="form-footer" style="padding:16px 0 0; border-top:none; gap:10px;">
+        <button class="btn btn-secondary" id="downloadBackupBtn">⬇ ذخیره/اشتراک فایل بک‌آپ</button>
         <button class="btn btn-primary" id="copyExportBtn">کپی به کلیپ‌بورد</button>
       </div>
     </div>
     <div class="tab-panel" id="tab-import">
-      <div class="backup-note">
-        متن پشتیبان قبلی رو اینجا جای‌گذاری کن. بک‌تست‌هایی که از قبل موجود نباشن اضافه می‌شن (چیزی حذف یا بازنویسی نمی‌شه).
+      <div class="backup-note" id="importNote">
+        متن پشتیبان قبلی رو اینجا جای‌گذاری کن، یا فایل بک‌آپ رو انتخاب کن. بک‌تست‌هایی که از قبل موجود نباشن اضافه می‌شن (چیزی حذف یا بازنویسی نمی‌شه).
       </div>
-      <textarea class="backup-textarea" id="importArea" placeholder="متن JSON پشتیبان رو اینجا paste کن..."></textarea>
+      <input type="file" id="restoreFileInput" accept="application/json,.json,.txt" style="display:none;">
+      <div class="form-footer" style="padding:0 0 12px; border-top:none;">
+        <button class="btn btn-secondary" id="pickBackupFileBtn">📂 انتخاب فایل بک‌آپ</button>
+      </div>
+      <textarea class="backup-textarea" id="importArea" placeholder="یا متن JSON پشتیبان رو اینجا paste کن..."></textarea>
       <div class="form-footer" style="padding:16px 0 0; border-top:none;">
         <button class="btn btn-primary" id="restoreBtn">بازیابی</button>
       </div>
@@ -982,6 +998,17 @@
     <div class="confirm-actions">
       <button class="btn btn-secondary" id="cancelDeleteBtn">انصراف</button>
       <button class="btn btn-danger" id="confirmDeleteBtn" style="flex:1;">حذف کن</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="backupReminderOverlay">
+  <div class="confirm-box">
+    <div class="cb-icon">🗓️</div>
+    <p>یه هفته‌ست از دیتات بک‌آپ نگرفتی. چون این اپ کاملاً آفلاینه، اگه اپ حذف بشه، بک‌تست‌هایی که بک‌آپ نگرفته باشی برای همیشه از بین می‌رن.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-secondary" id="dismissBackupReminderBtn">بعداً</button>
+      <button class="btn btn-primary" id="doBackupReminderBtn" style="flex:1;">بک‌آپ بگیر الان</button>
     </div>
   </div>
 </div>
@@ -1114,6 +1141,7 @@ let chartInstance = null;
 let equityChartInstance = null;
 let resultFilter = 'all';
 let tfFilterValue = 'all';
+let dirFilterValue = 'all';
 let sortMode = 'date_desc';
 let searchTerm = '';
 let tfValues = []; // multi-select: e.g. ['5m','15m','1H']
@@ -1358,6 +1386,7 @@ function render(){
   renderEquity();
   renderQuality();
   renderTfFilterChips();
+  renderDirFilterChips();
   renderList();
   renderReport();
 }
@@ -1465,6 +1494,7 @@ function renderMiniStats(){
 
   const rVals = records.map(r => parseFloat(r.rvalue)).filter(v => !isNaN(v));
   const avgR = rVals.length ? (rVals.reduce((a,b)=>a+b,0) / rVals.length) : null;
+  const totalR = rVals.length ? rVals.reduce((a,b)=>a+b,0) : null;
   const bestR = rVals.length ? Math.max(...rVals) : null;
   const worstR = rVals.length ? Math.min(...rVals) : null;
 
@@ -1484,6 +1514,10 @@ function renderMiniStats(){
     <div class="mini-card">
       <div class="mv mono" style="color:${avgR!==null ? (avgR>=0?'var(--profit)':'var(--loss)') : 'var(--text-faint)'}">${avgR!==null ? (avgR>=0?'+':'') + avgR.toFixed(2) + 'R' : '—'}</div>
       <div class="ml">میانگین R</div>
+    </div>
+    <div class="mini-card">
+      <div class="mv mono" style="color:${totalR!==null ? (totalR>=0?'var(--profit)':'var(--loss)') : 'var(--text-faint)'}">${totalR!==null ? (totalR>=0?'+':'') + totalR.toFixed(2) + 'R' : '—'}</div>
+      <div class="ml">مجموع R</div>
     </div>
     <div class="mini-card">
       <div class="mv mono" style="color:${bestR!==null ? 'var(--profit)' : 'var(--text-faint)'}">${bestR!==null ? '+'+bestR.toFixed(2)+'R' : '—'}</div>
@@ -1605,6 +1639,32 @@ function getRecordTimeframes(r){
   return Array.isArray(r.timeframe) ? r.timeframe : (r.timeframe ? [r.timeframe] : []);
 }
 
+function getRecordDirection(r){
+  const rrInfo = computeRR(r.entry, r.sl);
+  return rrInfo ? rrInfo.direction : null;
+}
+
+function renderDirFilterChips(){
+  const wrap = $('dirFilterChips');
+  const distinct = [...new Set(records.map(getRecordDirection).filter(Boolean))];
+  if(distinct.length < 2){
+    wrap.style.display = 'none';
+    if(dirFilterValue !== 'all'){ dirFilterValue = 'all'; }
+    return;
+  }
+  wrap.style.display = 'flex';
+  const dirLabel = d => d === 'long' ? 'Long' : 'Short';
+  wrap.innerHTML = `<div class="filter-chip ${dirFilterValue==='all'?'active':''}" data-dir="all">همه جهت‌ها</div>` +
+    distinct.map(d => `<div class="filter-chip ${dirFilterValue===d?'active':''}" data-dir="${d}">${dirLabel(d)}</div>`).join('');
+  wrap.querySelectorAll('.filter-chip').forEach(chipEl => {
+    chipEl.addEventListener('click', () => {
+      dirFilterValue = chipEl.dataset.dir;
+      renderDirFilterChips();
+      renderList();
+    });
+  });
+}
+
 function renderTfFilterChips(){
   const wrap = $('tfFilterChips');
   const distinct = [...new Set(records.flatMap(getRecordTimeframes))];
@@ -1633,10 +1693,13 @@ function getFiltered(){
   if(tfFilterValue !== 'all'){
     list = list.filter(r => getRecordTimeframes(r).includes(tfFilterValue));
   }
+  if(dirFilterValue !== 'all'){
+    list = list.filter(r => getRecordDirection(r) === dirFilterValue);
+  }
   if(searchTerm.trim()){
     const q = searchTerm.trim().toLowerCase();
     list = list.filter(r => {
-      const fields = [r.num, r.symbol, (Array.isArray(r.timeframe) ? r.timeframe.join(' ') : r.timeframe), r.trend, r.bos, r.ob, r.ote, r.fvg, r.lqBeforeOb, r.lq, r.rsi, r.div, (Array.isArray(r.entryLevel) ? r.entryLevel.join(' ') : ''), r.note, r.volume, r.entry, r.sl];
+      const fields = [r.num, r.symbol, (Array.isArray(r.timeframe) ? r.timeframe.join(' ') : r.timeframe), r.trend, r.bos, r.ob, r.ote, r.fvg, r.lqBeforeOb, r.lq, r.rsi, r.div, (Array.isArray(r.entryLevel) ? r.entryLevel.join(' ') : ''), r.note, r.volume, r.entry, r.sl, r.result, r.date ? formatDate(r.date) : ''];
       return fields.some(f => (f||'').toLowerCase().includes(q));
     });
   }
@@ -1688,7 +1751,10 @@ function renderList(){
     <div class="ticket" data-id="${r.id}">
       <div class="ticket-top">
         <div class="ticket-num"><span>#</span>${escapeHtml(r.num || '—')} <span class="conf-badge">${conf}/10</span></div>
-        <div class="tag ${tagClass}">${tagText}</div>
+        <div class="ticket-actions">
+          <div class="dup-btn" data-dup-id="${r.id}" title="کپی این بک‌تست">⎘</div>
+          <div class="tag ${tagClass}">${tagText}</div>
+        </div>
       </div>
       <div class="ticket-sub">
         ${dateLabel ? `<span>${dateLabel}</span>` : ''}
@@ -1720,6 +1786,51 @@ function renderList(){
   wrap.querySelectorAll('.ticket').forEach(el => {
     el.addEventListener('click', () => openForm(el.dataset.id));
   });
+  wrap.querySelectorAll('.dup-btn').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      duplicateRecord(el.dataset.dupId);
+    });
+  });
+}
+
+// Opens a fresh "new backtest" form pre-filled with another record's
+// values (a new number/date, no id) — for quickly logging a similar
+// setup instead of retyping everything. Screenshots aren't copied
+// since they belong to the original trade specifically.
+async function duplicateRecord(id){
+  const source = records.find(r => r.id === id);
+  if(!source) return;
+  const clone = { ...source };
+  delete clone.id;
+  delete clone.imageIds;
+  clone.num = nextNumber();
+  clone.date = todayStr();
+  clone.createdAt = Date.now();
+  editingId = null;
+  await openForm(null);
+  $('formTitle').textContent = 'کپی بک‌تست #' + escapeHtml(source.num || '');
+  $('f_num').value = clone.num;
+  $('f_symbol').value = clone.symbol || '';
+  $('f_date').value = clone.date;
+  $('f_volume').value = clone.volume || '';
+  $('f_entry').value = clone.entry || '';
+  $('f_sl').value = clone.sl || '';
+  Object.keys(segState).forEach(f => { segState[f] = clone[f] || null; });
+  if(clone.rsi && clone.rsi !== 'خیر'){ segState.rsi = 'بله'; }
+  if(clone.div === 'واگرایی مثبت' || clone.div === 'واگرایی منفی'){ segState.div = 'بله'; }
+  updateAllSegGroups();
+  entryLevelValues = Array.isArray(clone.entryLevel) ? [...clone.entryLevel] : [];
+  updateEntryLevelUI();
+  $('f_note').value = clone.note || '';
+  tfValues = Array.isArray(clone.timeframe) ? [...clone.timeframe] : (clone.timeframe ? [clone.timeframe] : []);
+  updateTfUI();
+  trendValue = clone.trend || null;
+  updateTrendUI();
+  resultValue = null; // a copied setup hasn't played out yet — let the user decide
+  updateSegUI();
+  updateRRPreview();
+  updateRealizedRPreview();
 }
 
 async function openForm(id){
@@ -2126,7 +2237,7 @@ function renderReport(){
       <div class="report-table-scroll">
         <table class="report-table">
           <thead><tr>
-            <th>#</th><th>نماد</th><th>تایم‌فریم</th><th>حجم</th><th>جهت</th><th>Entry</th><th>SL</th><th>TP1 (1R)</th><th>TP2 (2R)</th><th>سطح ورود</th><th>روند</th><th>BOS</th><th>OB</th><th>OTE</th><th>FVG</th><th>نقدینگی قبل از OB</th><th>LQ</th><th>RSI</th><th>واگرایی</th><th>R محقق‌شده</th><th>نتیجه</th><th>یادداشت</th>
+            <th>#</th><th>نماد</th><th>تایم‌فریم</th><th>حجم</th><th>جهت</th><th>Entry</th><th>SL</th><th>TP1 (1R)</th><th>TP2 (2R)</th><th>سطح ورود</th><th>روند</th><th>BOS</th><th>OB</th><th>OTE</th><th>FVG</th><th>نقدینگی قبل از OB</th><th>LQ</th><th>RSI</th><th>واگرایی</th><th>نتیجه</th><th>یادداشت</th>
           </tr></thead>
           <tbody>
             ${g.items.map(r => {
@@ -2159,7 +2270,6 @@ function renderReport(){
                 <td>${reportCell(r.lq)}</td>
                 <td>${reportCell(rsiDisplayLabel(r))}</td>
                 <td>${reportCell(r.div)}</td>
-                <td>${rTxt}</td>
                 <td class="${resClass}">${reportCell(r.result)}</td>
                 <td>${reportCell(r.note)}</td>
               </tr>`;
@@ -2294,22 +2404,66 @@ $('copyExportBtn').addEventListener('click', async () => {
   }catch(e){
     try{
       document.execCommand('copy');
-      toast('کپی شد ✓');
+      toast('کپی خودکار کار نکرد — متن رو دستی انتخاب و کپی کن');
     }catch(e2){
       toast('کپی خودکار کار نکرد — متن رو دستی انتخاب و کپی کن');
     }
   }
 });
 
-$('restoreBtn').addEventListener('click', async () => {
-  const raw = $('importArea').value.trim();
-  if(!raw){ toast('چیزی برای بازیابی وارد نشده'); return; }
+// Turns the current records into an actual .json file and hands it to
+// the native share sheet (save to Google Drive, Telegram, Files, etc.)
+// — same pattern as the PDF export. This is what makes a backup
+// survive an uninstall: the copy-to-clipboard version above never
+// leaves the app, but a file shared out to Drive/Telegram does.
+async function exportBackupToFile(){
+  const json = JSON.stringify(records, null, 2);
+  const fileName = `sinback-backup-${Date.now()}.json`;
+  const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+  const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+
+  try{
+    if(isNative && plugins.Filesystem && plugins.Share){
+      // Filesystem.writeFile expects base64 for anything not explicitly
+      // UTF-8 text, so we go through a data-URI the same way the PDF
+      // export does, rather than assuming an `encoding` option exists.
+      const base64 = btoa(unescape(encodeURIComponent(json)));
+      await plugins.Filesystem.writeFile({ path: fileName, data: base64, directory: 'CACHE' });
+      const uriResult = await plugins.Filesystem.getUri({ directory: 'CACHE', path: fileName });
+      await plugins.Share.share({
+        title: 'بک‌آپ سین‌بک',
+        text: 'فایل پشتیبان بک‌تست‌های سین‌بک',
+        url: uriResult.uri,
+        dialogTitle: 'ذخیره یا اشتراک‌گذاری بک‌آپ'
+      });
+    } else {
+      const blob = new Blob([json], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    markBackupDone();
+    return true;
+  }catch(err){
+    console.error('Backup export failed:', err);
+    toast('ساخت فایل بک‌آپ با خطا مواجه شد');
+    return false;
+  }
+}
+
+$('downloadBackupBtn').addEventListener('click', exportBackupToFile);
+
+function restoreFromJsonText(raw){
+  if(!raw || !raw.trim()){ toast('چیزی برای بازیابی وارد نشده'); return; }
   let parsed;
   try{
     parsed = JSON.parse(raw);
     if(!Array.isArray(parsed)) throw new Error('not array');
   }catch(e){
-    toast('متن JSON معتبر نیست');
+    toast('این فایل/متن یه بک‌آپ معتبر سین‌بک نیست');
     return;
   }
   const existingIds = new Set(records.map(r => r.id));
@@ -2321,18 +2475,84 @@ $('restoreBtn').addEventListener('click', async () => {
       added++;
     }
   });
-  await saveData();
-  render();
-  $('importArea').value = '';
-  toast(added > 0 ? `${added} بک‌تست بازیابی شد ✓` : 'چیز جدیدی برای اضافه کردن نبود');
-  $('backupOverlay').classList.remove('open');
+  saveData().then(() => {
+    render();
+    $('importArea').value = '';
+    toast(added > 0 ? `${added} بک‌تست بازیابی شد ✓` : 'چیز جدیدی برای اضافه کردن نبود');
+    $('backupOverlay').classList.remove('open');
+  });
+}
+
+$('restoreBtn').addEventListener('click', () => {
+  restoreFromJsonText($('importArea').value.trim());
 });
 
-// Initialization is triggered by the local account layer after a
+// File-picker based restore: standard <input type="file">, which Android
+// handles with its normal document/file picker — no extra native plugin
+// needed for picking (only for the export/share side above).
+$('pickBackupFileBtn').addEventListener('click', () => {
+  $('restoreFileInput').click();
+});
+$('restoreFileInput').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    $('importArea').value = String(reader.result || '');
+    restoreFromJsonText($('importArea').value);
+  };
+  reader.onerror = () => toast('خواندن فایل با خطا مواجه شد');
+  reader.readAsText(file);
+  e.target.value = ''; // allow picking the same file again later
+});
+
+$('dismissBackupReminderBtn').addEventListener('click', () => {
+  $('backupReminderOverlay').classList.remove('open');
+  snoozeBackupReminder();
+});
+$('doBackupReminderBtn').addEventListener('click', async () => {
+  $('backupReminderOverlay').classList.remove('open');
+  const ok = await exportBackupToFile();
+  if(ok) toast('بک‌آپ ذخیره شد ✓');
+});
+
+function backupReminderKey(){
+  return 'sinback-last-backup-' + (window.__sinbackCurrentAccount || 'default');
+}
+function backupSnoozeKey(){
+  return 'sinback-backup-snooze-' + (window.__sinbackCurrentAccount || 'default');
+}
+function markBackupDone(){
+  try{ localStorage.setItem(backupReminderKey(), String(Date.now())); }catch(e){ /* ignore */ }
+}
+function snoozeBackupReminder(){
+  // "بعداً" doesn't count as an actual backup, so it's tracked separately —
+  // it only silences the reminder for a week, it never marks the data as
+  // safely backed up.
+  try{ localStorage.setItem(backupSnoozeKey(), String(Date.now())); }catch(e){ /* ignore */ }
+}
+$('copyExportBtn').addEventListener('click', markBackupDone);
+
+function maybeShowBackupReminder(){
+  if(!records.length) return; // nothing to lose yet
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
+  let last = 0;
+  try{ last = parseInt(localStorage.getItem(backupReminderKey()) || '0', 10) || 0; }catch(e){ /* ignore */ }
+  let snoozed = 0;
+  try{ snoozed = parseInt(localStorage.getItem(backupSnoozeKey()) || '0', 10) || 0; }catch(e){ /* ignore */ }
+  const lastActivity = Math.max(last, snoozed);
+  if(Date.now() - lastActivity < oneWeek) return;
+  setTimeout(() => { $('backupReminderOverlay').classList.add('open'); }, 1200);
+}
+
+
 // successful login (see the auth module script below), instead of
 // running unconditionally on page load. loadData() itself, and every
 // trading calculation it leads to, is untouched.
-window.__sinbackAppInit = loadData;
+window.__sinbackAppInit = async function(){
+  await loadData();
+  maybeShowBackupReminder();
+};
 
 // Called once, right before __sinbackAppInit(), to point this session's
 // storage at the CURRENTLY LOGGED-IN account's own database — so each
@@ -2342,6 +2562,7 @@ window.__sinbackAppInit = loadData;
 // opened; idbOpen()/idbGetAllTrades()/etc. and all trading logic that
 // runs against that data are completely unchanged.
 window.__sinbackSetAccount = function(usernameNormalized){
+  window.__sinbackCurrentAccount = usernameNormalized;
   IDB_NAME = 'sinback-db-' + usernameNormalized;
   idb = null;
   useIndexedDB = false;
@@ -2649,6 +2870,21 @@ window.__sinbackLocalAuth = { createLocalAccount, verifyLocalLogin, changeLocalP
     }
 
     enterAccount(result.usernameNormalized);
+
+    if(pendingRestoreMode){
+      pendingRestoreMode = false;
+      // Open straight into the restore tab of the backup dialog and point
+      // the user at the file-picker button — this needs to be a fresh tap
+      // from the user (not something we trigger automatically), since
+      // Android only allows opening the file picker in direct response to
+      // a real tap.
+      setTimeout(() => {
+        $('backupOverlay').classList.add('open');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'import'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-import'));
+        toast('فایل بک‌آپت رو با دکمه «انتخاب فایل بک‌آپ» انتخاب کن');
+      }, 200);
+    }
   }
 
   /* =====================================================================
@@ -2701,6 +2937,7 @@ window.__sinbackLocalAuth = { createLocalAccount, verifyLocalLogin, changeLocalP
     // which could easily look like missing data rather than a filter.
     resultFilter = 'all';
     tfFilterValue = 'all';
+    dirFilterValue = 'all';
     sortMode = 'date_desc';
     searchTerm = '';
     const searchInputEl = document.getElementById('searchInput');
@@ -2783,10 +3020,25 @@ window.__sinbackLocalAuth = { createLocalAccount, verifyLocalLogin, changeLocalP
      ===================================================================== */
   function $a(id){ return document.getElementById(id); }
 
-  $a('goRegister').addEventListener('click', () => showScreen('register-form'));
+  let pendingRestoreMode = false;
+
+  $a('goRegister').addEventListener('click', () => {
+    pendingRestoreMode = false;
+    $a('registerRestoreNote').style.display = 'none';
+    showScreen('register-form');
+  });
   $a('goLogin').addEventListener('click', () => showScreen('login-form'));
+  $a('goRestoreFromLanding').addEventListener('click', () => {
+    pendingRestoreMode = true;
+    $a('registerRestoreNote').style.display = 'block';
+    showScreen('register-form');
+  });
   document.querySelectorAll('[data-back]').forEach(el => {
-    el.addEventListener('click', () => showScreen(el.dataset.back));
+    el.addEventListener('click', () => {
+      pendingRestoreMode = false;
+      $a('registerRestoreNote').style.display = 'none';
+      showScreen(el.dataset.back);
+    });
   });
 
   $a('submitRegisterUP').addEventListener('click', handleRegisterUsernamePassword);
