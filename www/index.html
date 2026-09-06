@@ -558,6 +558,17 @@
      a screenshot of live DOM/CSS and doesn't know about @media print,
      so this class is toggled on <body> right before capture (see
      generatePdfReport()) to get the same clean white PDF layout. */
+  /* Same visual treatment as the @media print block above, but as a
+     regular class instead of a print media query — html2canvas takes
+     a screenshot of live DOM/CSS and doesn't know about @media print,
+     so this class is toggled on <body> right before capture (see
+     generatePdfReport()) to get the same clean white PDF layout.
+     Unlike the print version, we do NOT shrink/wrap the table to fit
+     a phone-width screen — generatePdfReport() renders this at a wide
+     "desktop" width (via html2canvas's windowWidth option) so the
+     table gets to lay out at its natural, uncramped size, exactly
+     like it would on a laptop. We only strip the ellipsis truncation
+     so no cell content gets cut off. */
   body.pdf-export-mode .no-print{display:none !important;}
   body.pdf-export-mode{background:#fff !important;}
   body.pdf-export-mode #tradingAppRoot{max-width:100% !important; width:100% !important;}
@@ -567,10 +578,12 @@
   body.pdf-export-mode .table-view-wrap{padding:0 !important;}
   body.pdf-export-mode .report-table, body.pdf-export-mode .report-table th, body.pdf-export-mode .report-table td{border:1px solid #888 !important; background:#fff !important;}
   body.pdf-export-mode .report-table th{background:#eee !important;}
-  body.pdf-export-mode .report-table th, body.pdf-export-mode .report-table td{white-space:normal !important; font-size:8.5px !important; padding:4px 5px !important;}
+  body.pdf-export-mode .report-table th, body.pdf-export-mode .report-table td{
+    max-width:none !important; overflow:visible !important; text-overflow:clip !important;
+    white-space:nowrap !important; padding:6px 10px !important;
+  }
   body.pdf-export-mode .date-group-title{color:#111 !important; border-bottom:2px solid #111 !important;}
   body.pdf-export-mode .report-table-scroll{border:none !important; overflow:visible !important;}
-  body.pdf-export-mode .report-table{min-width:0 !important; table-layout:fixed !important;}
 </style>
 </head>
 <body>
@@ -2171,12 +2184,18 @@ async function generatePdfReport(){
   try{
     // Switch the report to the clean white "print" look, screenshot it,
     // then switch back — this all happens in well under a second.
+    // windowWidth tells html2canvas to lay the page out as if the
+    // browser were 1900px wide (like a laptop), instead of the phone's
+    // actual narrow screen — otherwise a table with this many columns
+    // gets crushed and the text overlaps/wraps into a mess.
     document.body.classList.add('pdf-export-mode');
     const target = document.querySelector('#tableView .table-view-wrap');
     const canvas = await html2canvas(target, {
       scale: 2,
       backgroundColor: '#ffffff',
-      useCORS: true
+      useCORS: true,
+      windowWidth: 1900,
+      windowHeight: target.scrollHeight
     });
     document.body.classList.remove('pdf-export-mode');
 
