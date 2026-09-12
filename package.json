@@ -11,7 +11,7 @@
     "@capacitor/android": "latest",
     "@capacitor/filesystem": "latest",
     "@capacitor/share": "latest",
-    "@capawesome/capacitor-file-opener": "latest"
+    "@capawesome-team/capacitor-file-opener": "latest"
   },
   "devDependencies": {
     "@capacitor/cli": "latest"
