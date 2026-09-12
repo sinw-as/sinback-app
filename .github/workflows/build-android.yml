@@ -35,12 +35,25 @@ jobs:
           cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
           cp node_modules/@capacitor/filesystem/dist/plugin.js www/capacitor-filesystem.js
           cp node_modules/@capacitor/share/dist/plugin.js www/capacitor-share.js
-          cp node_modules/@capawesome/capacitor-file-opener/dist/plugin.js www/capacitor-file-opener.js
+          cp node_modules/@capawesome-team/capacitor-file-opener/dist/plugin.js www/capacitor-file-opener.js
           curl -fsSL -o www/jspdf.umd.min.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
           curl -fsSL -o www/html2canvas.min.js https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
 
       - name: Add Android platform
         run: npx cap add android
+
+      - name: Configure file paths for the File Opener plugin
+        run: |
+          mkdir -p android/app/src/main/res/xml
+          FP=android/app/src/main/res/xml/file_paths.xml
+          echo '<?xml version="1.0" encoding="utf-8"?>' > "$FP"
+          echo '<paths xmlns:android="http://schemas.android.com/apk/res/android">' >> "$FP"
+          echo '    <files-path name="files" path="." />' >> "$FP"
+          echo '    <cache-path name="cache" path="." />' >> "$FP"
+          echo '    <external-files-path name="external-files" path="." />' >> "$FP"
+          echo '    <external-cache-path name="external-cache" path="." />' >> "$FP"
+          echo '    <external-path name="external" path="." />' >> "$FP"
+          echo '</paths>' >> "$FP"
 
       - name: Sync web assets into Android project
         run: npx cap sync android
