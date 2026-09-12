@@ -21,6 +21,7 @@
 <script src="capacitor.js"></script>
 <script src="capacitor-filesystem.js"></script>
 <script src="capacitor-share.js"></script>
+<script src="capacitor-file-opener.js"></script>
 <script src="jspdf.umd.min.js"></script>
 <script src="html2canvas.min.js"></script>
 <style>
@@ -587,6 +588,15 @@
   body.pdf-export-mode .report-table th, body.pdf-export-mode .report-table td{
     max-width:none !important; overflow:visible !important; text-overflow:clip !important;
     white-space:nowrap !important; padding:6px 10px !important;
+  }
+  /* The note column is free-text and can be arbitrarily long, unlike
+     every other column (short fixed labels/numbers) — nowrap would
+     either stretch the whole table absurdly wide or run text off the
+     edge of the captured image. This column alone wraps onto multiple
+     lines within a fixed width instead. */
+  body.pdf-export-mode .report-table td.note-cell{
+    white-space:normal !important; max-width:340px !important; min-width:220px !important;
+    text-align:right !important; line-height:1.7 !important;
   }
   body.pdf-export-mode .date-group-title{color:#111 !important; border-bottom:2px solid #111 !important;}
   body.pdf-export-mode .report-table-scroll{border:none !important; overflow:visible !important;}
@@ -2271,7 +2281,7 @@ function renderReport(){
                 <td>${reportCell(rsiDisplayLabel(r))}</td>
                 <td>${reportCell(r.div)}</td>
                 <td class="${resClass}">${reportCell(r.result)}</td>
-                <td>${reportCell(r.note)}</td>
+                <td class="note-cell">${reportCell(r.note)}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -2333,10 +2343,14 @@ async function generatePdfReport(){
     const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
     const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
 
-    if(isNative && plugins.Filesystem && plugins.Share){
+    if(isNative && plugins.Filesystem){
       // Inside the Android app: write the PDF to the app's cache folder,
-      // then hand it to the native share sheet so the user can save it
-      // to Downloads, send it on Telegram, etc.
+      // then hand it off. We try to open it directly in the phone's own
+      // PDF viewer (FileOpener → a normal "view" action, same as tapping
+      // a downloaded PDF in a file manager) so it can be saved/edited/
+      // shared from THAT app, which is what was actually asked for.
+      // If that plugin isn't available for some reason, we fall back to
+      // the share sheet from before so PDF export never just breaks.
       const base64 = pdf.output('datauristring').split(',')[1];
       await plugins.Filesystem.writeFile({
         path: fileName,
@@ -2344,12 +2358,24 @@ async function generatePdfReport(){
         directory: 'CACHE'
       });
       const uriResult = await plugins.Filesystem.getUri({ directory: 'CACHE', path: fileName });
-      await plugins.Share.share({
-        title: 'گزارش بک‌تست',
-        text: 'گزارش کامل بک‌تست‌های سین‌بک',
-        url: uriResult.uri,
-        dialogTitle: 'ذخیره یا اشتراک‌گذاری PDF'
-      });
+
+      let openedInViewer = false;
+      if(plugins.FileOpener){
+        try{
+          await plugins.FileOpener.openFile({ path: uriResult.uri, mimeType: 'application/pdf' });
+          openedInViewer = true;
+        }catch(openErr){
+          console.error('FileOpener failed, falling back to share sheet:', openErr);
+        }
+      }
+      if(!openedInViewer && plugins.Share){
+        await plugins.Share.share({
+          title: 'گزارش بک‌تست',
+          text: 'گزارش کامل بک‌تست‌های سین‌بک',
+          url: uriResult.uri,
+          dialogTitle: 'ذخیره یا اشتراک‌گذاری PDF'
+        });
+      }
     } else {
       // Running in a plain browser (e.g. while testing the web version):
       // fall back to a normal file download.
