@@ -35,6 +35,7 @@ jobs:
           cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
           cp node_modules/@capacitor/filesystem/dist/plugin.js www/capacitor-filesystem.js
           cp node_modules/@capacitor/share/dist/plugin.js www/capacitor-share.js
+          cp node_modules/@capawesome/capacitor-file-opener/dist/plugin.js www/capacitor-file-opener.js
           curl -fsSL -o www/jspdf.umd.min.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
           curl -fsSL -o www/html2canvas.min.js https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
 
